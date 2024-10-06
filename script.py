@@ -3,6 +3,7 @@ import datetime
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from json_functions import load_user_data, save_user_data
 
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -11,7 +12,7 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 SET_DATE = 1
 
 # Dictionary to store the target dates for each user
-user_target_dates = {}
+user_target_dates = load_user_data()
 
 # Function to calculate time remaining
 def calculate_remaining_time(date):
@@ -37,9 +38,24 @@ async def start(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text('Please enter a date in the format DD/MM/YYYY:')
     return SET_DATE  # Move to the next step to get the date
 
+def is_valid_date(date_string):
+    try:
+        day, month, year = map(int, date_string.split('/'))
+        # Check if the date is valid (this automatically handles month and day limits)
+        datetime.date(year, month, day)
+        return True
+    except ValueError:
+        return False
+    
 # Function to handle the input date and immediately send the remaining time
 async def set_date(update: Update, context: CallbackContext) -> int:
     user_id = update.message.from_user.id
+    date_input = update.message.text.strip()
+    
+    if not is_valid_date(date_input):
+        await update.message.reply_text('Invalid date format. Please use DD/MM/YYYY and ensure the date is valid.')
+        return SET_DATE  # Ask the user to enter the date again
+    
     try:
         # Parse date in DD/MM/YYYY format
         target_date = datetime.datetime.strptime(update.message.text, '%d/%m/%Y').date()
@@ -51,6 +67,7 @@ async def set_date(update: Update, context: CallbackContext) -> int:
 
         # Store date for this user
         user_target_dates[user_id] = target_date
+        save_user_data(user_target_dates)
 
         # Send a confirmation message
         await update.message.reply_text(f'Target date set to: {target_date}')
