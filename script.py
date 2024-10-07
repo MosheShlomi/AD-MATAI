@@ -9,6 +9,24 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from json_functions import load_user_data, save_user_data
 from date_functions import format_remaining_time,calculate_remaining_time, is_valid_date
 
+WELCOME_TEXT = """
+🌟 **שחרור מתקרב? תן לנו לטפל בספירה לאחור!** 🌟
+
+אני כאן כדי לעזור לך לעקוב אחרי תאריך השחרור שלך! 
+פשוט עקוב אחרי הצעדים הפשוטים הבאים:
+
+1. *הזנת תאריך השחרור שלך* 🗓️: הזן את תאריך השחרור שלך, ואני אזכור אותו עבורך!
+2. *קבלת עדכונים יומיים* ⏳: בכל יום, אשלח לך הודעה שתראה כמה זמן נשאר עד לתאריך השחרור שלך! 🎉
+3. *שמור על עצמך מעודכן* 📅: אם תאריך השחרור שלך הוא היום, אשלח לך הודעת ברכות מיוחדת! 
+
+כשאתה מוכן או שאתה רוצה להתחיל מחדש, פשוט לחץ על /start! 
+אם אתה רוצה לשנות את התאריך שלך, השתמש ב-/setdate. 
+ואם אתה רוצה לעצור, פשוט כתוב /cancel.
+
+בוא ניהנה מהספירה לאחור לשחרור שלך! 🚀
+"""
+
+
 jerusalem_tz = pytz.timezone('Asia/Jerusalem')
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -19,6 +37,8 @@ SET_DATE = 1
 user_target_dates = load_user_data()
 
 async def start(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text(WELCOME_TEXT)
+    
     user_id = update.message.from_user.id
     if user_id in user_target_dates:
         await update.message.reply_text("כבר יש לך תאריך שחרור, אבל הוא אופס. יש להזין תאריך השחרור חדש בפורמט DD/MM/YYYY:")
