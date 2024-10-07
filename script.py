@@ -130,6 +130,9 @@ def main():
 # setdate
 # cancel
 
+#Timezone that used is Asia/Jerusalem
+
+
 
 if __name__ == '__main__':
     main()
