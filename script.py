@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from json_functions import load_user_data, save_user_data
+from date_functions import format_remaining_time,calculate_remaining_time, is_valid_date
 
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -11,81 +12,53 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 # Step identifiers for conversation
 SET_DATE = 1
 
-# Dictionary to store the target dates for each user
 user_target_dates = load_user_data()
 
-# Function to calculate time remaining
-def calculate_remaining_time(date):
-    today = datetime.date.today()
-    remaining = date - today
-    years, months, days = remaining.days // 365, (remaining.days % 365) // 30, (remaining.days % 365) % 30
-    return years, months, days
-
-# Function to format the remaining time message (ignores 0 values)
-def format_remaining_time(years, months, days):
-    time_parts = []
-    if years > 0:
-        time_parts.append(f"{years} years")
-    if months > 0:
-        time_parts.append(f"{months} months")
-    if days > 0:
-        time_parts.append(f"{days} days")
-    
-    return ", ".join(time_parts)
-
-# Start command: prompts the user to enter the date
 async def start(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text('Please enter a date in the format DD/MM/YYYY:')
+    await update.message.reply_text('על מנת להתחיל יש להזין תאריך השחרור בפורמט DD/MM/YYYY:')
     return SET_DATE  # Move to the next step to get the date
 
-def is_valid_date(date_string):
-    try:
-        day, month, year = map(int, date_string.split('/'))
-        # Check if the date is valid (this automatically handles month and day limits)
-        datetime.date(year, month, day)
-        return True
-    except ValueError:
-        return False
-    
+async def setdate(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('יש להזין תאריך השחרור בפורמט DD/MM/YYYY:')
+    return SET_DATE  # Move to the next step to get the date
+
 # Function to handle the input date and immediately send the remaining time
-async def set_date(update: Update, context: CallbackContext) -> int:
+async def set_date_handler(update: Update, context: CallbackContext) -> int:
     user_id = update.message.from_user.id
     date_input = update.message.text.strip()
     
     if not is_valid_date(date_input):
-        await update.message.reply_text('Invalid date format. Please use DD/MM/YYYY and ensure the date is valid.')
-        return SET_DATE  # Ask the user to enter the date again
+        await update.message.reply_text('פורמט תאריך לא חוקי. יש להשתמש בפורמט DD/MM/YYYY ויש לוודא שהתאריך תקף.')
+        return SET_DATE
     
     try:
         # Parse date in DD/MM/YYYY format
         target_date = datetime.datetime.strptime(update.message.text, '%d/%m/%Y').date()
-
+        # To display it in DD-MM-YYYY format:
+        formatted_date = target_date.strftime('%d-%m-%Y')
+        
         # Check if the date is in the future
         if target_date <= datetime.date.today():
-            await update.message.reply_text('The date must be in the future. Please enter a valid future date.')
-            return SET_DATE  # Ask the user to enter the date again
+            await update.message.reply_text('התאריך חייב להיות בעתיד. נא להזין תאריך עתידי חוקי.')
+            return SET_DATE
 
-        # Store date for this user
         user_target_dates[user_id] = target_date
         save_user_data(user_target_dates)
 
-        # Send a confirmation message
-        await update.message.reply_text(f'Target date set to: {target_date}')
+        await update.message.reply_text(f'תאריך שחרור המעודכן הוא: {formatted_date}')
 
         # Immediately calculate and send the remaining time
         years, months, days = calculate_remaining_time(target_date)
         remaining_time_message = format_remaining_time(years, months, days)
-        await update.message.reply_text(f"{remaining_time_message} left until {target_date}")
+        await update.message.reply_text(f"{remaining_time_message} - נשאר עד השחרור ב{formatted_date}")
 
     except ValueError:
-        await update.message.reply_text('Invalid date format. Please use DD/MM/YYYY.')
+        await update.message.reply_text('פורמט תאריך לא חוקי. אנא השתמש ב-DD/MM/YYYY.')
         return SET_DATE  # Ask the user to enter the date again
 
     return ConversationHandler.END  # End the conversation
 
-# New /setdate command handler to directly set the date
-async def setdate(update: Update, context: CallbackContext) -> None:
-    await update.message.reply_text('Please enter a date in the format DD/MM/YYYY:')
+
 
 # Function to send daily messages
 async def send_daily_message(context: CallbackContext):
@@ -94,11 +67,48 @@ async def send_daily_message(context: CallbackContext):
         target_date = user_target_dates[user_id]
         years, months, days = calculate_remaining_time(target_date)
         remaining_time_message = format_remaining_time(years, months, days)
-        await context.bot.send_message(chat_id=user_id, text=f"{remaining_time_message} left until {target_date}")
+        await context.bot.send_message(chat_id=user_id, text=f"{remaining_time_message} left until {target_date.strftime('%d/%m/%Y')}")
+
+async def schedule_daily_message(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+
+    # Schedule a daily job
+    context.job_queue.run_daily(send_daily_message, time=datetime.time(hour=9, minute=0), context=user_id)
+
+    await update.message.reply_text("Daily reminders have been scheduled for 9:00 AM.")
+
+async def view_date(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    if user_id in user_target_dates:
+        target_date = user_target_dates[user_id]
+        await update.message.reply_text(f'Your target date is set to: {target_date.strftime("%d/%m/%Y")}')
+    else:
+        await update.message.reply_text("You have not set a target date yet.")
+
+async def set_reminder(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    if user_id not in user_target_dates:
+        await update.message.reply_text("You need to set a target date first using /setdate.")
+        return
+
+    # Example interval: 1 week before the target date
+    interval = datetime.timedelta(days=7)
+    target_date = user_target_dates[user_id]
+    reminder_date = target_date - interval
+
+    # Schedule a job to send a reminder
+    context.job_queue.run_once(send_reminder_message, reminder_date, context=user_id)
+
+    await update.message.reply_text(f"Reminder set for {reminder_date.strftime('%d/%m/%Y')} - You will be notified then.")
+
+async def send_reminder_message(context: CallbackContext):
+    user_id = context.job.context
+    await context.bot.send_message(chat_id=user_id, text="This is your reminder for your target date!")
+
 
 # Function to cancel the conversation (in case user wants to stop)
 async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text("Date input cancelled.")
+    await update.message.reply_text("הזנת תאריך בוטלה.")
     return ConversationHandler.END
 
 def main():
@@ -109,16 +119,19 @@ def main():
 
     # Conversation handler for setting the date after /start command
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler('start', start), CommandHandler('setdate', setdate)],
         states={
-            SET_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_date)]
+            SET_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_handler)]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
     application.add_handler(conv_handler)
 
-    # Handler for the /setdate command
-    application.add_handler(CommandHandler('setdate', setdate))
+    application.add_handler(CommandHandler('schedule', schedule_daily_message))
+
+    # Inside the main function
+    application.add_handler(CommandHandler('viewdate', view_date))
+    application.add_handler(CommandHandler('remind', set_reminder))
 
     # Start polling
     application.run_polling()
