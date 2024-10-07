@@ -27,3 +27,5 @@ To set up this project, follow these steps:
    ```bash
     python script.py
 
+Also you can visit my bot that already running: https://t.me/ad_matai_bot
+
