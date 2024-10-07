@@ -1,6 +1,8 @@
 import json
 import os
 import datetime
+import aiofiles
+import json
 
 # Load user data from a JSON file
 def load_user_data(file_path='user_data.json'):
@@ -19,4 +21,3 @@ def save_user_data(user_data, file_path='user_data.json'):
     
     with open(file_path, 'w') as file:
         json.dump(user_data_serializable, file)
-
