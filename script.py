@@ -56,8 +56,14 @@ SET_TIME = 2
 # Load user target dates from JSON
 user_target_dates = load_user_data()
 
+async def reset_state(update: Update, context: CallbackContext) -> None:
+    """Reset any ongoing conversation and clear user data."""
+    context.user_data.clear()
+    return ConversationHandler.END
+
 # Command handlers
 async def start(update: Update, context: CallbackContext) -> int:
+    await reset_state(update, context)
     await update.message.reply_text(WELCOME_TEXT)
     
     user_id = update.message.from_user.id
@@ -71,16 +77,19 @@ async def start(update: Update, context: CallbackContext) -> int:
 
 
 async def setdate(update: Update, context: CallbackContext) -> int:
+    await reset_state(update, context)
     await update.message.reply_text(SET_DATE_PROMPT_TEXT)
     return SET_DATE
 
 
 async def settime(update: Update, context: CallbackContext) -> int:
+    await reset_state(update, context)
     await update.message.reply_text(SET_NOTIFICATION_TIME_PROMPT_TEXT)
     return SET_TIME
 
 
 async def cancel(update: Update, context: CallbackContext) -> int:
+    await reset_state(update, context)
     await update.message.reply_text(CANCEL_TEXT)
     return ConversationHandler.END
 
@@ -218,20 +227,34 @@ def main():
     # job_queue.run_daily(send_daily_updates, time=time(hour=9, minute=0, tzinfo=jerusalem_tz))
     job_queue.run_repeating(send_daily_updates, interval=60, first=0)
 
-    # Organize all conversation handlers into one single handler
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('start', start),
-            CommandHandler('setdate', setdate),
-            CommandHandler('settime', settime),
-        ],
+    start_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
         states={
-            SET_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_handler)],
+            SET_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_handler)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True
+    )
+
+    setdate_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('setdate', setdate)],
+        states={
+            SET_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_date_handler)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
+    settime_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('settime', settime)],
+        states={
             SET_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_time_handler)]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-    application.add_handler(conv_handler)
+
+    application.add_handler(start_conv_handler)
+    application.add_handler(setdate_conv_handler)
+    application.add_handler(settime_conv_handler)
 
     # Add the howlong command separately
     application.add_handler(CommandHandler('howlong', howlong))
