@@ -13,8 +13,8 @@ django-filter==22.1
 djangorestframework==3.14.0
 djangorestframework-simplejwt==5.2.2
 exceptiongroup==1.2.0
-grpcio==1.36.1
-grpcio-tools==1.36.1
+grpcio==1.48.1
+grpcio-tools==1.48.1
 h11==0.14.0
 httpcore==1.0.2
 httpx==0.27.2
