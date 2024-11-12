@@ -36,7 +36,12 @@ To set up this project, follow these steps:
    TELEGRAM_BOT_TOKEN=<your-bot-token>
    ```
 
-4. **Run the script:**
+4. **Install packages from requirements.txt file:**
+   ```bash
+   pip install --upgrade pip setuptools wheel  && pip install --prefer-binary -r requirements.txt
+   ```
+
+5. **Run the script:**
    ```bash
    python script.py
    ```
