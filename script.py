@@ -5,23 +5,28 @@ from telegram import Update
 from datetime import datetime, time, date
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from json_functions import load_user_data, save_user_data
-from date_functions import format_remaining_time, calculate_remaining_time, is_valid_date, get_remain_time
+from date_functions import is_valid_date, get_remain_time
 
 WELCOME_TEXT = """
 🌟 **שחרור מתקרב? תן לנו לטפל בספירה לאחור!** 🌟
 
-אני כאן כדי לעזור לך לעקוב אחרי תאריך השחרור שלך! 
-פשוט עקוב אחרי הצעדים הפשוטים הבאים:
+אני כאן כדי לעזור לך לעקוב אחרי תאריך השחרור שלך ולהישאר מעודכן! 
+עקוב אחרי הצעדים הבאים כדי להתחיל:
 
-1. *הזנת תאריך השחרור שלך* 🗓️: הזן את תאריך השחרור שלך, ואני אזכור אותו עבורך!
-2. *קבלת עדכונים יומיים* ⏳: בכל יום, אשלח לך הודעה שתראה כמה זמן נשאר עד לתאריך השחרור שלך! 🎉
-3. *שמור על עצמך מעודכן* 📅: אם תאריך השחרור שלך הוא היום, אשלח לך הודעת ברכות מיוחדת! 
+1. הגדרת תאריך השחרור שלך 🗓️: הזן את תאריך השחרור שלך, ואני אזכור אותו עבורך!
+2. עדכונים יומיים מותאמים אישית ⏳: בכל יום, תקבל הודעה שתראה כמה זמן נשאר עד לתאריך השחרור, בשעה הנוחה לך! 
+3. שמר על תאריך השחרור שלך מעודכן 📅: אם תאריך השחרור הגיע, תקבל הודעת ברכה מיוחדת! 🎉
 
-כשאתה מוכן או שאתה רוצה להתחיל מחדש, פשוט לחץ על /start! 
-אם אתה רוצה לשנות את התאריך שלך, השתמש ב-/setdate. 
-ואם אתה רוצה לעצור, פשוט כתוב /cancel.
+פשוט השתמש בפקודות הבאות:
 
-בוא ניהנה מהספירה לאחור לשחרור שלך! 🚀
+- /start - כדי להתחיל או להתחיל מחדש
+- /setdate - לעדכון תאריך השחרור
+- /settime - להגדרת השעה המועדפת לעדכון יומי
+- /howlong - לקבלת מידע על הזמן שנותר עד לשחרור שלך
+- /reset - ביטול תאריך שחרור אם תרצה להפסיק את העדכונים
+- /cancel - ביטול תהליך הזנת התאריך
+
+הספירה לאחור לשחרור מתחילה כאן! 🚀
 """
 
 EXISTING_DATE_TEXT = "כבר יש לך תאריך שחרור, אבל הוא אופס. יש להזין תאריך השחרור חדש בפורמט DD/MM/YYYY:"
@@ -34,6 +39,8 @@ PAST_DATE_TEXT = "התאריך חייב להיות בעתיד. נא להזין �
 UPDATED_DATE_TEXT = "תאריך שחרור המעודכן הוא: {}"
 REMAINING_TIME_TEXT = "{} - נשאר עד השחרור ב{}"
 RELEASE_TODAY_TEXT = "🎉 מזל טוב! הגיע יום השחרור שלך! 🎉"
+RESET_TEXT = "תאריך השחרור שלך אופס! מכאן ולהבא לא יהיה יותר עדכונים עד שלא יוזן תאריך שחרור חדש."
+NO_RESET_TEXT = "לא קיים תאריך שחרור."
 
 # Timezone
 jerusalem_tz = pytz.timezone('Asia/Jerusalem')
@@ -75,6 +82,16 @@ async def settime(update: Update, context: CallbackContext) -> int:
 
 async def cancel(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text(CANCEL_TEXT)
+    return ConversationHandler.END
+
+async def reset(update: Update, context: CallbackContext) -> int:
+    user_id = update.message.from_user.id
+    if user_id in user_target_dates:
+        del user_target_dates[user_id]
+        save_user_data(user_target_dates)
+        await update.message.reply_text(RESET_TEXT)
+    else:    
+        await update.message.reply_text(NO_RESET_TEXT)
     return ConversationHandler.END
 
 
@@ -160,32 +177,31 @@ async def howlong(update: Update, context: CallbackContext) -> None:
     
 
 async def send_daily_updates(context: CallbackContext):
-    print("happened")
     now = datetime.now(jerusalem_tz).time()
     users_to_remove = []
-    print("now ", now)
 
     for user_id, data in user_target_dates.items():
         target_date = data.get("date")
         notification_time = data.get("notification_time", time(9, 0))  # Default to 9:00 if not set
-        print("target date: ", target_date, " notification time: ", notification_time)
 
         # Only send if it's the user's chosen notification time
-        if target_date and notification_time.hour == now.hour and notification_time.minute == now.minute:
-            today = date.today()
+        if target_date and notification_time is not None:
+            # Only send if it's the user's chosen notification time
+            if notification_time.hour == now.hour and notification_time.minute == now.minute:
+                today = date.today()
 
-            if target_date == today:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text="🎉 מזל טוב! הגיע יום השחרור שלך! 🎉"
-                )
-                users_to_remove.append(user_id)
+                if target_date == today:
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text="🎉 מזל טוב! הגיע יום השחרור שלך! 🎉"
+                    )
+                    users_to_remove.append(user_id)
 
-            elif target_date > today:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=get_remain_time(target_date)
-                )
+                elif target_date > today:
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text=get_remain_time(target_date)
+                    )
 
     for user_id in users_to_remove:
         del user_target_dates[user_id]
@@ -219,6 +235,8 @@ def main():
 
     # Add the howlong command separately
     application.add_handler(CommandHandler('howlong', howlong))
+    
+    application.add_handler(CommandHandler('reset', reset))
 
     application.run_polling()
 
